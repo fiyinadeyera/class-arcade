@@ -5,48 +5,98 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Leave the Maze</title>
 <style>
-  :root{ --bg:#0c1017; --panel:#151b26; --text:#eaf0ff; --muted:#8391a8; --accent:#5ad06a; --jail:#e2b23b; --border:#26303f; }
+  :root{ --bg:#0c1017; --panel:#151b26; --text:#eaf0ff; --muted:#8391a8; --accent:#5ad06a; --jail:#e2b23b;
+    --freeze:#5ad6ff; --boost:#ffd23f; --border:#26303f; }
   *{ box-sizing:border-box; }
+  [hidden]{ display:none!important; }
   body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
     background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
   .wrap{ width:100%; max-width:400px; display:flex; flex-direction:column; gap:10px; }
   .back{ align-self:flex-start; display:inline-flex; align-items:center; gap:4px; padding:8px 10px 8px 0;
     font-size:12px; text-decoration:none; color:var(--muted); }
   .back:hover{ color:var(--text); }
-  .hud{ display:flex; justify-content:space-between; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+  .hud{ display:flex; justify-content:space-between; gap:8px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
   .hud b{ color:var(--accent); } .hud .jail{ color:var(--jail); }
   .stage{ position:relative; border:2px solid var(--border); border-radius:10px; overflow:hidden; background:#0a0d13; }
   canvas{ display:block; width:100%; height:auto; image-rendering:pixelated; touch-action:none; }
+
+  /* overlay: start menu, run results, and mid-run pauses */
   .overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:10px; padding:20px; text-align:center; background:rgba(6,9,15,.92); }
+    gap:8px; padding:18px; text-align:center; overflow-y:auto; background:rgba(6,9,15,.94); }
   .overlay.hidden{ display:none; }
-  .overlay h1{ margin:0; font-size:20px; } .overlay p{ margin:0; font-size:13px; color:var(--muted); max-width:30ch; line-height:1.5; }
-  .btn{ margin-top:4px; padding:11px 26px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
+  .overlay h1{ margin:0; font-size:20px; } .overlay p{ margin:0; font-size:13px; color:var(--muted); max-width:32ch; line-height:1.5; }
+  .btn{ margin-top:2px; padding:11px 26px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
     color:#08210c; font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
+
+  /* difficulty toggle */
+  .diff{ display:flex; gap:8px; }
+  .dbtn{ padding:9px 18px; min-height:44px; border:1px solid var(--border); border-radius:8px; background:var(--panel);
+    color:var(--muted); font-family:inherit; font-size:14px; cursor:pointer; }
+  .dbtn.on{ border-color:var(--accent); color:var(--text); }
+
+  .tok{ font-size:13px; color:var(--boost); }
+
+  /* save-score row */
+  .save{ display:flex; gap:8px; width:100%; max-width:240px; }
+  .save input{ flex:1; min-width:0; min-height:44px; padding:9px 10px; border:1px solid var(--border); border-radius:8px;
+    background:var(--panel); color:var(--text); font-family:inherit; font-size:14px; }
+  .btn2{ padding:0 16px; min-height:44px; border:none; border-radius:8px; background:var(--accent); color:#08210c;
+    font-weight:700; font-family:inherit; font-size:14px; cursor:pointer; }
+  .btn2:disabled{ opacity:.5; }
+
+  /* leaderboard */
+  .lb{ width:100%; max-width:240px; font-size:12px; }
+  .lbh{ text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; }
+  .lbrow{ display:flex; justify-content:space-between; padding:3px 0; border-top:1px solid var(--border); }
+  .lbrow.empty{ justify-content:center; color:var(--muted); }
+
+  /* abilities */
+  .abil{ display:flex; gap:8px; justify-content:center; }
+  .abtn{ flex:1; max-width:180px; min-height:44px; border:1px solid var(--border); border-radius:8px;
+    background:var(--panel); color:var(--text); font-family:inherit; font-size:14px; cursor:pointer; }
+  #freezeBtn{ border-color:var(--freeze); } #boostBtn{ border-color:var(--boost); }
+  .abtn:disabled{ opacity:.4; cursor:not-allowed; }
+
   .pad{ display:grid; grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px); gap:6px; justify-content:center; }
   .pad button{ border:1px solid var(--border); background:var(--panel); color:var(--text); border-radius:8px; font-size:18px; font-family:inherit; cursor:pointer; }
   .pad .u{ grid-column:2; } .pad .l{ grid-column:1; grid-row:2; } .pad .d{ grid-column:2; grid-row:2; } .pad .r{ grid-column:3; grid-row:2; }
   .foot{ font-size:11px; color:var(--muted); text-align:center; }
+
+  /* mobile */
   @media(min-width:769px){ .pad{ display:none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <a class="back" href="../index.html">&larr; Arcade</a>
-  <div class="hud"><span>Level <b id="lvl">1</b>/5</span><span id="mode">Maze</span></div>
+  <div class="hud"><span>Level <b id="lvl">1</b>/5</span><span>Score <b id="score">0</b></span><span id="mode">Maze</span></div>
   <div class="stage">
     <canvas id="game"></canvas>
     <div id="overlay" class="overlay">
-      <h1>Leave the Maze</h1>
-      <p>Find the exit before the police tag you. Get caught and you are thrown in a jail maze, twice as hard with 3 officers. 5 levels. The last one has 5 cops and a guard at the door.</p>
+      <h1 id="ovTitle">Leave the Maze</h1>
+      <p id="ovText">The cops only move when you move, so think each step. Freeze them or dash past them, escape 5 mazes, and finish to earn tokens.</p>
+      <div id="diffRow" class="diff">
+        <button class="dbtn on" data-diff="easy">Easy</button>
+        <button class="dbtn" data-diff="hard">Hard</button>
+      </div>
+      <div id="tokLine" class="tok"></div>
+      <div id="saveRow" class="save" hidden>
+        <input id="nameIn" maxlength="8" placeholder="Your name" aria-label="Your name">
+        <button id="saveBtn" class="btn2">Save</button>
+      </div>
+      <div id="lbPanel" class="lb"></div>
       <button id="start" class="btn">Play</button>
     </div>
+  </div>
+  <div class="abil">
+    <button id="freezeBtn" class="abtn" disabled>❄ Freeze (2)</button>
+    <button id="boostBtn" class="abtn" disabled>⚡ Boost (2)</button>
   </div>
   <div class="pad">
     <button class="u" data-act="up">▲</button><button class="l" data-act="left">◀</button>
     <button class="d" data-act="down">▼</button><button class="r" data-act="right">▶</button>
   </div>
-  <p class="foot">WASD or arrow keys to move.</p>
+  <p class="foot">WASD or arrows to move. Q freeze, E boost.</p>
 </div>
 
 <script>
@@ -56,7 +106,22 @@ const DIMS = [0,7,8,9,10,11];              // maze size per level
 const cv = document.getElementById('game'), ctx = cv.getContext('2d');
 const el = id => document.getElementById(id);
 
-let lvl=1, mode='maze', returnLevel=1, m, player, exitC, cops, copSpeed, copTimer=0, running=false, last=0;
+let lvl=1, mode='maze', returnLevel=1, m, player, exitC, cops, running=false, last=0, pendingLevel=0;
+let score=0, diff='easy', pendingScore=0, saved=false, resetOnStart=true;
+let moveCount=0, copEvery=2, freezeMoves=0, boostMoves=0, freezeCharges=2, boostCharges=2;  // cops step only when you move
+
+// ---- leaderboard + tokens (saved on this device) ----
+const LB='lb_leavethemaze', TOK='lm_tokens';
+function getLB(d){ try{ return JSON.parse(localStorage.getItem(LB+'_'+d))||[]; }catch(e){ return []; } }
+function addScore(d,name,sc){ const a=getLB(d); a.push({name:(name||'YOU').slice(0,8), score:sc});
+  a.sort((x,y)=>y.score-x.score); a.splice(5); try{ localStorage.setItem(LB+'_'+d,JSON.stringify(a)); }catch(e){} return a; }
+function renderLB(){ const a=getLB(diff);
+  el('lbPanel').innerHTML = `<div class="lbh">${diff} top scores</div>` +
+    (a.length ? a.map((r,i)=>`<div class="lbrow"><span>${i+1}. ${r.name}</span><span>${r.score}</span></div>`).join('')
+              : `<div class="lbrow empty">No scores yet. Be the first.</div>`);
+}
+const getTok = () => { try{ return +localStorage.getItem(TOK)||0; }catch(e){ return 0; } };
+const addTok = n => { try{ localStorage.setItem(TOK, getTok()+n); }catch(e){} };
 
 // ---- maze generation (DFS) ----
 function genMaze(cols,rows){
@@ -106,46 +171,87 @@ function farCell(){
 function build(cols, jail){
   m = genMaze(cols,cols); player={x:0,y:0}; exitC={x:cols-1,y:cols-1};
   cv.width=cols*TILE; cv.height=cols*TILE; ctx.imageSmoothingEnabled=false;
-  cops=[]; copTimer=0;
-  if(jail){ copSpeed=300; for(let i=0;i<3;i++) cops.push(farCell()); }
-  else if(lvl===5){ copSpeed=240; cops.push({x:exitC.x, y:exitC.y-1, guard:true}); for(let i=0;i<4;i++) cops.push(farCell()); }
-  else { copSpeed=380-lvl*30; cops.push(farCell()); }
+  cops=[]; moveCount=0; freezeMoves=0; boostMoves=0;
+  freezeCharges=2; boostCharges=2;                       // abilities refresh each level
+  copEvery = diff==='easy' ? 2 : 1;                      // easy: cops move every 2nd step, so you are faster
+  if(jail){ for(let i=0;i<3;i++) cops.push(farCell()); }
+  else if(lvl===5){ cops.push({x:exitC.x, y:exitC.y-1, guard:true}); for(let i=0;i<4;i++) cops.push(farCell()); }
+  else { cops.push(farCell()); }
 }
 
-function loadLevel(n){ lvl=n; mode='maze'; el('mode').textContent='Maze'; el('mode').className=''; build(DIMS[n], false); }
-function loadJail(){ returnLevel=lvl; mode='jail'; el('mode').textContent='JAIL'; el('mode').className='jail'; build(DIMS[lvl]+4, true); }
+function updateHud(){ el('lvl').textContent=lvl; el('score').textContent=score; }
+function updateAbil(){ const fb=el('freezeBtn'), bb=el('boostBtn');
+  fb.textContent='❄ Freeze ('+freezeCharges+')'; bb.textContent='⚡ Boost ('+boostCharges+')';
+  fb.disabled = !running||freezeCharges<=0; bb.disabled = !running||boostCharges<=0; }
+function loadLevel(n){ lvl=n; mode='maze'; el('mode').textContent='Maze'; el('mode').className=''; build(DIMS[n], false); updateHud(); }
+function loadJail(){ returnLevel=lvl; mode='jail'; el('mode').textContent='JAIL'; el('mode').className='jail'; build(DIMS[lvl]+4, true); updateHud(); }
 
-function overlay(title,text,btn){ el('overlay').classList.remove('hidden'); el('overlay').querySelector('h1').textContent=title;
-  el('overlay').querySelector('p').textContent=text; el('start').textContent=btn; running=false; }
+// mode: 'menu' (start), 'result' (run ended, offer to save score), 'pause' (mid-run, just continue)
+function setOverlay(modeName, title, text){
+  const ov=el('overlay'); ov.classList.remove('hidden');
+  el('ovTitle').textContent=title; el('ovText').textContent=text;
+  el('diffRow').hidden = modeName==='pause';
+  el('lbPanel').hidden = modeName==='pause';
+  el('tokLine').hidden = modeName==='pause';
+  el('saveRow').hidden = modeName!=='result';
+  el('start').textContent = modeName==='menu' ? 'Play' : (modeName==='pause' ? 'Continue' : 'Play again');
+  resetOnStart = modeName!=='pause';
+  if(modeName!=='pause'){ el('tokLine').textContent='🪙 '+getTok()+' tokens earned'; renderLB(); }
+  if(modeName==='result'){ saved=false; const sb=el('saveBtn'), ni=el('nameIn');
+    sb.disabled=false; sb.textContent='Save'; ni.disabled=false; ni.value=''; }
+  running=false; updateAbil();
+}
 
 function caught(){
-  if(mode==='jail'){ lvl=1; overlay('Sent back to the start','You did not escape the jail. The whole game restarts.','Play from Level 1'); }
-  else if(lvl===5){ overlay('Tagged!','A cop got you at the final level. Restarting Level 5.','Retry Level 5'); pendingLevel=5; }
+  if(mode==='jail'){ pendingScore=score; lvl=1; setOverlay('result','Sent back to the start','The jail held you. Final score: '+score); }
+  else if(lvl===5){ pendingLevel=5; setOverlay('pause','Tagged!','A cop got you at the final level. Retry Level 5, your score carries over.'); }
   else { loadJail(); }
 }
-let pendingLevel=0;
 
 function reachedExit(){
-  if(mode==='jail'){ loadLevel(returnLevel); }
-  else if(lvl===5){ overlay('You are free!','You escaped all 5 mazes and the jail. Nice work.','Play again'); pendingLevel=1; }
-  else { loadLevel(lvl+1); }
+  if(mode==='jail'){ score+=50; updateHud(); loadLevel(returnLevel); }
+  else if(lvl===5){ score+=300; addTok(10); updateHud(); pendingScore=score; pendingLevel=1;
+    setOverlay('result','You are free!','You escaped all 5 mazes. Score: '+score+'. You earned 10 tokens.'); }
+  else { score+=100; updateHud(); loadLevel(lvl+1); }
 }
 
-// ---- input ----
+// ---- movement: the cops advance only when you actually move ----
 function tryMove(dir){
   if(!running) return;
   const c=m.cells[m.idx(player.x,player.y)];
-  if(dir==='up'&&!c.n)player.y--; else if(dir==='down'&&!c.s)player.y++;
-  else if(dir==='left'&&!c.w)player.x--; else if(dir==='right'&&!c.e)player.x++;
+  let moved=false;
+  if(dir==='up'&&!c.n){ player.y--; moved=true; } else if(dir==='down'&&!c.s){ player.y++; moved=true; }
+  else if(dir==='left'&&!c.w){ player.x--; moved=true; } else if(dir==='right'&&!c.e){ player.x++; moved=true; }
+  if(!moved) return;                                     // into a wall = no move, so cops stay put
   if(cops.some(o=>o.x===player.x&&o.y===player.y)) return caught();
-  if(player.x===exitC.x&&player.y===exitC.y) reachedExit();
+  if(player.x===exitC.x&&player.y===exitC.y) return reachedExit();
+  moveCount++;
+  let copsStep = (moveCount % copEvery === 0);
+  if(freezeMoves>0){ freezeMoves--; copsStep=false; }   // police frozen
+  else if(boostMoves>0){ boostMoves--; copsStep=false; } // your free dash steps
+  if(copsStep) stepCops();
 }
+
+function useFreeze(){ if(!running||freezeCharges<=0) return; freezeCharges--; freezeMoves=6; updateAbil(); }
+function useBoost(){ if(!running||boostCharges<=0) return; boostCharges--; boostMoves=4; updateAbil(); }
+
 const KEYS={ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down',ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right'};
-addEventListener('keydown',e=>{ const a=KEYS[e.key]; if(a){ e.preventDefault(); tryMove(a); } });
+addEventListener('keydown',e=>{
+  const a=KEYS[e.key]; if(a){ e.preventDefault(); tryMove(a); return; }
+  if(e.key==='q'||e.key==='Q') useFreeze();
+  else if(e.key==='e'||e.key==='E') useBoost();
+});
 document.querySelectorAll('.pad button').forEach(b=>{ const go=e=>{ e.preventDefault(); tryMove(b.dataset.act); };
   b.addEventListener('touchstart',go,{passive:false}); b.addEventListener('mousedown',go); });
+el('freezeBtn').onclick=useFreeze; el('boostBtn').onclick=useBoost;
 
-// ---- loop ----
+// difficulty + save
+document.querySelectorAll('.dbtn').forEach(b=> b.onclick=()=>{ diff=b.dataset.diff;
+  document.querySelectorAll('.dbtn').forEach(x=>x.classList.toggle('on', x===b)); renderLB(); });
+el('saveBtn').onclick=()=>{ if(saved) return; addScore(diff, el('nameIn').value.trim(), pendingScore);
+  saved=true; el('saveBtn').disabled=true; el('saveBtn').textContent='Saved'; el('nameIn').disabled=true; renderLB(); };
+
+// ---- cops + draw ----
 function stepCops(){
   for(const o of cops){ const [nx,ny]=step(o.x,o.y,player.x,player.y); o.x=nx; o.y=ny;
     if(o.x===player.x&&o.y===player.y){ caught(); return; } }
@@ -164,23 +270,23 @@ function draw(){
     if(y===rows-1&&c.s){ ctx.moveTo(X,Y+TILE); ctx.lineTo(X+TILE,Y+TILE); }
     ctx.stroke();
   }
-  for(const o of cops){ ctx.fillStyle= o.guard?'#ff5a5a':'#3b7bff'; ctx.fillRect(o.x*TILE+4,o.y*TILE+4,TILE-8,TILE-8);
+  const frozen = freezeMoves>0;
+  for(const o of cops){ ctx.fillStyle= frozen ? '#5ad6ff' : (o.guard?'#ff5a5a':'#3b7bff'); ctx.fillRect(o.x*TILE+4,o.y*TILE+4,TILE-8,TILE-8);
     ctx.fillStyle='#0a0d13'; ctx.fillRect(o.x*TILE+6,o.y*TILE+5,TILE-12,3); }
+  if(boostMoves>0){ ctx.strokeStyle='#ffd23f'; ctx.lineWidth=2; ctx.strokeRect(player.x*TILE+2,player.y*TILE+2,TILE-4,TILE-4); }
   ctx.fillStyle='#ffd23f'; ctx.fillRect(player.x*TILE+4,player.y*TILE+4,TILE-8,TILE-8);
 }
-function loop(ts){
-  const dt=(ts-last); last=ts;
-  if(running){ copTimer+=dt; if(copTimer>=copSpeed){ copTimer=0; stepCops(); } draw(); }
-  requestAnimationFrame(loop);
-}
+function loop(){ if(running) draw(); requestAnimationFrame(loop); }
 
 el('start').addEventListener('click',()=>{
   el('overlay').classList.add('hidden');
-  loadLevel(pendingLevel||1); pendingLevel=0; running=true; last=performance.now();
+  if(resetOnStart) score=0;
+  loadLevel(pendingLevel||1); pendingLevel=0; updateHud(); running=true; updateAbil(); last=performance.now();
 });
 
-// idle backdrop for the menu
-lvl=1; build(DIMS[1],false); draw();
+// idle backdrop + starting menu
+build(DIMS[1],false); updateHud(); draw();
+el('tokLine').textContent='🪙 '+getTok()+' tokens earned'; renderLB(); updateAbil();
 requestAnimationFrame(loop);
 </script>
 </body>

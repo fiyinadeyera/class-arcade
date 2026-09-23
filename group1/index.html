@@ -42,7 +42,7 @@
   <a class="back" href="../index.html">&larr; Arcade</a>
   <div class="hud">
     <span><span class="label">Obstacles</span> <b id="obs">0</b>/500</span>
-    <span><span class="label">Dist</span> <b id="dist">0</b></span>
+    <span><span class="label">Lives</span> <b id="lives">3</b></span>
     <span id="state" class="label">Run</span>
   </div>
 
@@ -50,7 +50,7 @@
     <canvas id="game"></canvas>
     <div id="overlay" class="overlay">
       <h1>Escape the Police</h1>
-      <p>Run up the street. Dodge cars and fire. Tap UP on green for a speed boost, red sprains your ankle. Pass 500 obstacles to grab a gun and take the cops down.</p>
+      <p>Run up the street. Dodge cars and fire. Tap UP on green for a speed boost, red sprains your ankle. You have 3 lives, a car or fire costs one. Pass 500 obstacles to grab a gun and take the cops down.</p>
       <button id="start" class="btn">Play</button>
     </div>
   </div>
@@ -94,24 +94,24 @@ function lane(R){
   if(rowType(R)!=='road') return null;
   if(!lanes[R]){
     const dir = R%2===0 ? 1 : -1;
-    const speed = 22 + rnd(R)*26;
+    const speed = 12 + rnd(R)*14;                  // slower traffic
     const span = (3 + Math.floor(rnd(R+3)*3))*TILE;
     const cars = [];
     const off = rnd(R+9)*span;
     for(let x=-TILE; x<W+TILE; x+=span) cars.push(x+off);
-    lanes[R] = { dir, speed, span, carW:TILE*1.5, cars };
+    lanes[R] = { dir, speed, span, carW:TILE*1.5, cars, stopUntil:0 };
   }
   return lanes[R];
 }
 const burning = (c,R,t) => rowType(R)==='fire' && ((Math.floor(t/700)+c*2+R)%3===0);
 
 // ---- State ----
-let player, maxRow, obstacles, boostUntil, slowUntil, sprained, armed, policeRow;
+let player, maxRow, obstacles, boostUntil, slowUntil, sprained, armed, policeRow, lives, invuln;
 let running=false, over=false, barOn=false, barLocked=false, lastBar=0, barZone=null, barFlash=0, last=0;
 
 function reset(){
   player = { col:5, row:0, colF:5, rowF:0, hop:0 };
-  maxRow=0; obstacles=0; boostUntil=0; slowUntil=0; sprained=false; armed=false; policeRow=-4;
+  maxRow=0; obstacles=0; boostUntil=0; slowUntil=0; sprained=false; armed=false; policeRow=-4; lives=3; invuln=0;
   for(const k in lanes) delete lanes[k];
   running=true; over=false; barOn=false; barLocked=false; lastBar=performance.now(); barZone=null; barFlash=0;
   el('overlay').classList.add('hidden'); el('fireBtn').classList.add('hidden');
@@ -164,6 +164,8 @@ function update(dt, now){
   for(let R=player.row-6; R<=player.row+12; R++) lane(R);
   for(const k in lanes){
     const R=+k, L=lanes[k]; if(R<player.row-14){ delete lanes[k]; continue; }
+    if(now < L.stopUntil) continue;                                            // this lane is stopped at a light
+    if(Math.random() < 0.004){ L.stopUntil = now + 600 + Math.random()*1400; continue; }  // cars stop at random times
     const total=L.cars.length*L.span;
     for(let i=0;i<L.cars.length;i++){ L.cars[i]+=L.dir*L.speed*dt; if(L.cars[i]>W+TILE)L.cars[i]-=total; else if(L.cars[i]<-TILE)L.cars[i]+=total; }
   }
@@ -178,12 +180,20 @@ function update(dt, now){
   if(settled){
     if(rowType(R)==='road'){
       const L=lane(R), pcx=player.col*TILE+TILE/2;
-      for(const x of L.cars){ if(Math.abs(x+L.carW/2-pcx) < L.carW/2+TILE*0.3){ return lose('A car got you.'); } }
-    } else if(burning(player.col,R,now)){ return lose('You ran into the fire.'); }
+      for(const x of L.cars){ if(Math.abs(x+L.carW/2-pcx) < L.carW/2+TILE*0.3){ hit('A car hit you.'); break; } }
+    } else if(burning(player.col,R,now)){ hit('The fire caught you.'); }
+    if(!running) return;
   }
   if(policeRow >= player.rowF-0.05) return lose('The police caught you.');
 }
 function lose(reason){ running=false; over=true; end('Busted!', reason+' Obstacles passed: '+obstacles); }
+function hit(reason){                              // car or fire: costs a life, not instant game over
+  const now=performance.now();
+  if(now<invuln) return;                          // brief mercy right after a hit
+  lives--;
+  if(lives<=0){ lose(reason); return; }
+  invuln = now+1600;                              // flash and no damage for a moment
+}
 
 // ---- Draw ----
 const sy = R => PLAYER_Y + (player.rowF-R)*TILE;
@@ -196,8 +206,9 @@ function draw(now){
       else{ ctx.fillStyle= t==='fire'?'#3a2a22':'#33343f'; ctx.fillRect(c*TILE,y,TILE,TILE);
         if(t==='road'&&c%2){ ctx.fillStyle='#5b5d6e'; ctx.fillRect(c*TILE+TILE/2-1,y+TILE/2-1,2,2); } }
     }
-    if(t==='road'){ const L=lane(R); for(let i=0;i<L.cars.length;i++){ const cx=L.cars[i]; ctx.fillStyle=CARS[Math.floor(rnd(R+i*3)*CARS.length)];
-      ctx.fillRect(cx,y+3,L.carW,TILE-6); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(cx+(L.dir>0?L.carW-6:2),y+5,4,TILE-10); } }
+    if(t==='road'){ const L=lane(R), stopped=now<L.stopUntil; for(let i=0;i<L.cars.length;i++){ const cx=L.cars[i]; ctx.fillStyle=CARS[Math.floor(rnd(R+i*3)*CARS.length)];
+      ctx.fillRect(cx,y+3,L.carW,TILE-6); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(cx+(L.dir>0?L.carW-6:2),y+5,4,TILE-10);
+      if(stopped){ ctx.fillStyle='#ff3b3b'; ctx.fillRect(cx+(L.dir>0?0:L.carW-3),y+6,3,4); } } }
     if(t==='fire'){ for(let c=0;c<COLS;c++) if(burning(c,R,now)){ ctx.fillStyle='#f0862a'; ctx.fillRect(c*TILE+2,y+3,TILE-4,TILE-4);
       ctx.fillStyle= (Math.floor(now/120)+c)%2?'#ffd23f':'#ff5a2a'; ctx.fillRect(c*TILE+4,y+2,TILE-8,TILE-8); } }
   }
@@ -208,12 +219,14 @@ function draw(now){
     for(let c=1;c<COLS;c+=3){ ctx.fillStyle='#2b4cff'; ctx.fillRect(c*TILE+2,py+3,TILE-4,TILE-5); ctx.fillStyle='#101a3a'; ctx.fillRect(c*TILE+3,py+1,TILE-6,4);
       ctx.fillStyle=(Math.floor(now/200)%2)?'#ff3b3b':'#3b7bff'; ctx.fillRect(c*TILE+5,py+5,TILE-10,3); } }
 
-  // player
+  // player (blinks briefly after a hit)
   const px=player.colF*TILE, ppy=PLAYER_Y;
+  ctx.globalAlpha = (now<invuln && Math.floor(now/120)%2===0) ? 0.3 : 1;
   ctx.fillStyle= sprained?'#c94a4a':'#2b3a67'; ctx.fillRect(px+4,ppy+9,3,5); ctx.fillRect(px+9,ppy+9,3,5);
   ctx.fillStyle='#ffd23f'; ctx.fillRect(px+3,ppy+4,10,7);
   ctx.fillStyle='#f0c090'; ctx.fillRect(px+5,ppy,6,5);
   if(armed){ ctx.fillStyle='#333'; ctx.fillRect(px+11,ppy+5,6,3); }
+  ctx.globalAlpha = 1;
 
   drawBar(now);
 }
@@ -231,7 +244,7 @@ function drawBar(now){
 
 // ---- HUD + loop ----
 function hud(now){
-  el('obs').textContent = obstacles; el('dist').textContent = maxRow;
+  el('obs').textContent = obstacles; el('lives').textContent = lives;
   let s = now<boostUntil?'Boost!' : now<slowUntil?'Slow' : sprained?'Hurt' : 'Run';
   if(armed) s = 'ARMED';
   el('state').textContent = s;
@@ -252,6 +265,7 @@ el('start').addEventListener('click', reset);
 
 // idle frame so the start screen has a backdrop
 player = { col:5, row:0, colF:5, rowF:0, hop:0 }; policeRow=-6;
+maxRow=0; obstacles=0; lives=3; invuln=0; boostUntil=0; slowUntil=0; sprained=false; armed=false;
 requestAnimationFrame(loop);
 </script>
 </body>
