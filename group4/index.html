@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gridiron Showdown</title>
+<title>Football Fusion</title>
 <style>
   :root{ --bg:#0a1410; --panel:#12241b; --text:#eafff2; --muted:#8fb7a2; --buf:#2b6cff; --eag:#3ad06a; --accent:#ffd23f; --border:#1f3a2c; }
   *{ box-sizing:border-box; }
@@ -35,7 +35,7 @@
   <div class="stage">
     <canvas id="game"></canvas>
     <div id="overlay" class="overlay">
-      <h1>Gridiron Showdown</h1>
+      <h1>Football Fusion</h1>
       <p>You are the Buffalo QB. R/Q set power (max 80), F throws. Then you are the receiver: catch with F, run with WASD to the end zone, stiff-arm with T. Touchdown = 6, then K for the extra point.</p>
       <button id="start" class="btn">Hike</button>
     </div>
@@ -44,7 +44,7 @@
 </div>
 
 <script>
-/* ===== Gridiron Showdown (Group 4) — schematic football ===== */
+/* ===== Football Fusion (Group 4) — schematic football ===== */
 const W=300, H=520, EZ=56;            // field + end zone height (top)
 const cv=document.getElementById('game'), ctx=cv.getContext('2d');
 cv.width=W; cv.height=H; ctx.imageSmoothingEnabled=false;
