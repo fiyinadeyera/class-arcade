@@ -7,8 +7,17 @@
 <style>
   :root{ --bg:#0a1410; --panel:#12241b; --text:#eafff2; --muted:#8fb7a2; --buf:#2b6cff; --eag:#3ad06a; --accent:#ffd23f; --border:#1f3a2c; }
   *{ box-sizing:border-box; }
+  [hidden]{ display:none!important; }
   body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
     background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
+
+  /* field flanked by two scoreboards */
+  .arena{ display:flex; align-items:center; justify-content:center; gap:12px; width:100%; }
+  .board{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 12px; min-width:70px;
+    border:1px solid var(--border); border-radius:10px; background:var(--panel); }
+  .board-lbl{ font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); }
+  .board-num{ font-size:34px; font-weight:700; color:var(--accent); }
+
   .wrap{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
   .back{ align-self:flex-start; display:inline-flex; align-items:center; gap:4px; padding:8px 10px 8px 0;
     font-size:12px; text-decoration:none; color:var(--muted); }
@@ -25,48 +34,66 @@
   .btn{ margin-top:4px; padding:11px 24px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
     color:#231a00; font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
   .foot{ font-size:11px; color:var(--muted); text-align:center; line-height:1.5; }
+
+  /* mobile: side boards drop away, the top HUD keeps the score */
+  @media(max-width:768px){ .board{ display:none; } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <a class="back" href="../index.html">&larr; Arcade</a>
-  <div class="hud"><span><span class="buf">Buffalo</span> vs <span class="eag">Eagles</span></span><span>Score <b id="score">0</b></span></div>
-  <div id="msg">Set your power, then press F to throw</div>
-  <div class="stage">
-    <canvas id="game"></canvas>
-    <div id="overlay" class="overlay">
-      <h1>Football Fusion</h1>
-      <p>You are the Buffalo QB. R/Q set power (max 80), F throws. Then you are the receiver: catch with F, run with WASD to the end zone, stiff-arm with T. Touchdown = 6, then K for the extra point.</p>
-      <button id="start" class="btn">Hike</button>
+<div class="arena">
+  <aside class="board"><span class="board-lbl">Buffalo</span><span class="board-num" id="scoreL">0</span></aside>
+  <div class="wrap">
+    <a class="back" href="../index.html">&larr; Arcade</a>
+    <div class="hud"><span><span class="buf">Buffalo</span> vs <span class="eag">Eagles</span></span><span>Score <b id="score">0</b></span></div>
+    <div id="msg">Set your power, then press F to throw</div>
+    <div class="stage">
+      <canvas id="game"></canvas>
+      <div id="overlay" class="overlay">
+        <h1>Football Fusion</h1>
+        <p>You are the Buffalo QB. R/Q set power (max 80), F throws. Then you are the receiver: catch with F, run with WASD to the end zone, and press T to tackle a defender out of the way. Touchdown = 6, then K for the extra point.</p>
+        <button id="start" class="btn">Hike</button>
+      </div>
     </div>
+    <p class="foot">R/Q power &middot; F throw &amp; catch &middot; WASD run &middot; T tackle &middot; K kick</p>
   </div>
-  <p class="foot">R/Q power · F throw &amp; catch · WASD run · T stiff-arm · K kick</p>
+  <aside class="board"><span class="board-lbl">Score</span><span class="board-num" id="scoreR">0</span></aside>
 </div>
 
 <script>
 /* ===== Football Fusion (Group 4) — schematic football ===== */
-const W=300, H=520, EZ=56;            // field + end zone height (top)
+const W=340, H=640, EZ=56;            // bigger field + end zone height (top)
+const RUN=2.4, DEF=2.5;               // player run speed vs faster Eagles
 const cv=document.getElementById('game'), ctx=cv.getContext('2d');
 cv.width=W; cv.height=H; ctx.imageSmoothingEnabled=false;
 const el=id=>document.getElementById(id);
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
-let state='menu', power=80, score=0, stiff=2, last=0, wantCatch=false;
-let qb, wr, ball, defs, line;
+let state='menu', power=80, score=0, tackleCd=0, last=0, wantCatch=false, explodeUntil=0;
+let qb, wr, ball, defs, line, mates, particles=[];
+
+const makeDefs = () => [
+  {x:70,y:H-270,stunUntil:0}, {x:170,y:H-320,stunUntil:0},
+  {x:270,y:H-270,stunUntil:0}, {x:170,y:H-200,stunUntil:0}
+];
+// more of our team on the field: blockers and receivers downfield
+const makeMates = () => [
+  {x:60,y:H-330}, {x:W-60,y:H-350}, {x:W/2,y:H-410}, {x:110,y:H-470}, {x:W-110,y:H-500}
+];
 
 function newPlay(keepScore){
   if(!keepScore) score=0;
-  state='throw'; power=80; stiff=2; wantCatch=false;
+  state='throw'; power=80; tackleCd=0; wantCatch=false;
   qb={x:W/2, y:H-46};
   wr={x:W/2, y:H-92};
   ball={x:qb.x, y:qb.y, t:0, live:false, from:null, to:null};
-  defs=[{x:70,y:H-230},{x:150,y:H-270},{x:230,y:H-230},{x:150,y:H-160}];
-  line=[]; for(let i=0;i<8;i++) line.push({x:30+i*34, y:H-24});   // Buffalo line (decor)
+  defs=makeDefs(); mates=makeMates(); particles=[];
+  line=[]; for(let i=0;i<10;i++) line.push({x:24+i*34, y:H-24});   // Buffalo line (decor)
   el('overlay').classList.add('hidden');
-  el('score').textContent=score;
+  setScore();
   msg('Set power with R/Q, press F to throw');
 }
 const msg = t => el('msg').textContent=t;
+function setScore(){ const s=''+score; el('score').textContent=s; el('scoreL').textContent=s; el('scoreR').textContent=s; }
 const over = (title,text,btn)=>{ const o=el('overlay'); o.classList.remove('hidden');
   o.querySelector('h1').textContent=title; o.querySelector('p').textContent=text; el('start').textContent=btn; };
 
@@ -79,6 +106,13 @@ function throwBall(){
   msg('Here comes the ball. Tap F to catch!');
 }
 
+function explode(){                            // you get tackled = you explode
+  particles=[];
+  for(let i=0;i<22;i++){ const a=Math.random()*Math.PI*2, sp=50+Math.random()*120;
+    particles.push({x:wr.x, y:wr.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:0.9, col:Math.random()<0.5?'#ff5a2a':'#ffd23f'}); }
+  state='explode'; explodeUntil=performance.now()+900; msg('BOOM! You got tackled.');
+}
+
 function key(k){
   if(state==='throw'){
     if(k==='r') power=Math.min(80,power+3);
@@ -87,17 +121,18 @@ function key(k){
   } else if(state==='ball'){
     if(k==='f') wantCatch=true;
   } else if(state==='run'){
-    if(k==='t' && stiff>0){ let n=defs.slice().sort((a,b)=>dist(a,wr)-dist(b,wr))[0];
-      if(n && dist(n,wr)<70){ const dx=n.x-wr.x, dy=n.y-wr.y, m=Math.hypot(dx,dy)||1; n.x+=dx/m*46; n.y+=dy/m*46; stiff--; msg('Stiff-arm! ('+stiff+' left)'); } }
+    if(k==='t'){ const now=performance.now();
+      if(now>tackleCd){ const n=defs.slice().sort((a,b)=>dist(a,wr)-dist(b,wr))[0];
+        if(n && dist(n,wr)<55){ const dx=n.x-wr.x, dy=n.y-wr.y, m=Math.hypot(dx,dy)||1;
+          n.x+=dx/m*34; n.y+=dy/m*34; n.stunUntil=now+2500; tackleCd=now+900; msg('Tackle! An Eagle is down.'); }
+        else msg('No one close enough to tackle.'); } }
   } else if(state==='extra'){
-    if(k==='k'){ if(Math.random()<0.8){ score++; msg('The kick is GOOD! +1'); } else msg('The kick sails wide.');
-      el('score').textContent=score; state='done'; setTimeout(()=>over('Great drive!','Final score: '+score+'. Line up for another play.','Next play'),700); }
+    if(k==='k'){ if(Math.random()<0.8){ score++; setScore(); msg('The kick is GOOD! +1'); } else msg('The kick sails wide.');
+      state='done'; setTimeout(()=>over('Great drive!','Final score: '+score+'. Line up for another play.','Next play'),700); }
   }
 }
 const MOVE={w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],arrowup:[0,-1],arrowdown:[0,1],arrowleft:[-1,0],arrowright:[1,0]};
 addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k===' '){e.preventDefault();} if(k in MOVE||['r','q','f','t','k'].includes(k)){ e.preventDefault(); key(k); } });
-// touch: tap zones -> map to keys
-document.querySelectorAll('[data-k]').forEach(b=> b.onclick=()=>key(b.dataset.k));
 
 function update(dt){
   if(state==='throw'){ wr.y-=1.4; wr.x+=Math.sin(performance.now()/300)*0.6; }
@@ -110,11 +145,17 @@ function update(dt){
     }
   }
   else if(state==='run'){
-    keysHeld.forEach(k=>{ const m=MOVE[k]; if(m){ wr.x+=m[0]*2.4; wr.y+=m[1]*2.4; } });
+    const now=performance.now();
+    keysHeld.forEach(k=>{ const m=MOVE[k]; if(m){ wr.x+=m[0]*RUN; wr.y+=m[1]*RUN; } });
     wr.x=Math.max(8,Math.min(W-8,wr.x)); wr.y=Math.max(EZ-6,Math.min(H-8,wr.y));
-    for(const d of defs){ const dx=wr.x-d.x, dy=wr.y-d.y, m=Math.hypot(dx,dy)||1; d.x+=dx/m*2.0; d.y+=dy/m*2.0;
-      if(dist(d,wr)<13){ state='done'; return setTimeout(()=>over('Tackled!','The Eagles brought you down. Next play.','Next play'),500); } }
-    if(wr.y<=EZ){ score+=6; el('score').textContent=score; state='extra'; msg('TOUCHDOWN! +6. Press K for the extra point.'); }
+    for(const d of defs){ if(now<d.stunUntil) continue;                 // tackled defenders stay down
+      const dx=wr.x-d.x, dy=wr.y-d.y, m=Math.hypot(dx,dy)||1; d.x+=dx/m*DEF; d.y+=dy/m*DEF;
+      if(dist(d,wr)<13){ return explode(); } }
+    if(wr.y<=EZ){ score+=6; setScore(); state='extra'; msg('TOUCHDOWN! +6. Press K for the extra point.'); }
+  }
+  else if(state==='explode'){
+    for(const p of particles){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=40*dt; p.life-=dt; }
+    if(performance.now()>explodeUntil){ state='done'; over('Tackled!','You blew up on the hit. Line up again.','Next play'); }
   }
 }
 
@@ -124,6 +165,7 @@ addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k in MOVE) keysH
 addEventListener('keyup',e=>{ keysHeld.delete(e.key.toLowerCase()); });
 
 function draw(){
+  const now=performance.now();
   // field
   ctx.fillStyle='#123b25'; ctx.fillRect(0,0,W,H);
   ctx.fillStyle='#0e2f1d'; ctx.fillRect(0,0,W,EZ);            // end zone
@@ -131,17 +173,22 @@ function draw(){
   for(let y=EZ;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
   ctx.fillStyle='#3ad06a'; ctx.font='10px monospace'; ctx.textAlign='center'; ctx.fillText('END ZONE',W/2,EZ/2+3);
 
-  for(const p of line){ ctx.fillStyle='#1c4b8a'; ctx.fillRect(p.x-4,p.y-4,8,8); }   // decor line
-  for(const d of defs){ ctx.fillStyle='#3ad06a'; ctx.beginPath(); ctx.arc(d.x,d.y,7,0,7); ctx.fill(); }
+  for(const p of line){ ctx.fillStyle='#1c4b8a'; ctx.fillRect(p.x-4,p.y-4,8,8); }        // decor line
+  for(const t of mates){ ctx.fillStyle='#2b6cff'; ctx.beginPath(); ctx.arc(t.x,t.y,6,0,7); ctx.fill(); } // teammates
+  for(const d of defs){ ctx.fillStyle= now<d.stunUntil ? '#6b7d72' : '#3ad06a';          // stunned = grey
+    ctx.beginPath(); ctx.arc(d.x,d.y,7,0,7); ctx.fill(); }
 
   if(state==='throw'||state==='menu'){ ctx.fillStyle='#2b6cff'; ctx.beginPath(); ctx.arc(qb.x,qb.y,8,0,7); ctx.fill(); }
-  // receiver
-  ctx.fillStyle='#5aa0ff'; ctx.beginPath(); ctx.arc(wr.x,wr.y,8,0,7); ctx.fill();
-  if(state==='run'){ ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.ellipse(wr.x,wr.y-11,4,6,0,0,7); ctx.fill(); }
+  if(state!=='explode'){                                     // the receiver (gone once exploded)
+    ctx.fillStyle='#5aa0ff'; ctx.beginPath(); ctx.arc(wr.x,wr.y,8,0,7); ctx.fill();
+    if(state==='run'){ ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.ellipse(wr.x,wr.y-11,4,6,0,0,7); ctx.fill(); }
+  }
 
   if(state==='ball'&&ball.live){ const t=ball.t, x=ball.from.x+(ball.to.x-ball.from.x)*t,
       y=ball.from.y+(ball.to.y-ball.from.y)*t - Math.sin(t*Math.PI)*40;
     ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.ellipse(x,y,4,7,0,0,7); ctx.fill(); }
+
+  if(state==='explode'){ for(const p of particles){ if(p.life>0){ ctx.fillStyle=p.col; ctx.fillRect(p.x-2,p.y-2,4,4); } } }
 
   // power meter during throw
   if(state==='throw'){ const bx=20,by=H-20,bw=W-40;
@@ -154,8 +201,8 @@ function loop(ts){ const dt=Math.min(0.05,(ts-last)/1000); last=ts; if(state!=='
 el('start').addEventListener('click',()=>{ const cont = el('start').textContent==='Next play'; newPlay(cont); });
 
 // idle backdrop
-qb={x:W/2,y:H-46}; wr={x:W/2,y:H-92}; ball={x:0,y:0,live:false}; defs=[{x:70,y:H-230},{x:150,y:H-270},{x:230,y:H-230},{x:150,y:H-160}]; line=[];
-for(let i=0;i<8;i++) line.push({x:30+i*34,y:H-24});
+qb={x:W/2,y:H-46}; wr={x:W/2,y:H-92}; ball={x:0,y:0,live:false}; defs=makeDefs(); mates=makeMates();
+line=[]; for(let i=0;i<10;i++) line.push({x:24+i*34,y:H-24});
 requestAnimationFrame(loop);
 </script>
 </body>
