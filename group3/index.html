@@ -12,6 +12,9 @@
     background:radial-gradient(circle at 50% -10%, #2a1c46, var(--bg) 65%); color:var(--text);
     font-family:"Trebuchet MS",system-ui,sans-serif; }
   .wrap{ width:100%; max-width:460px; display:flex; flex-direction:column; gap:14px; }
+  .back{ align-self:flex-start; display:inline-flex; align-items:center; gap:4px; padding:8px 10px 8px 0;
+    font-size:12px; text-decoration:none; color:var(--muted); }
+  .back:hover{ color:var(--text); }
   .title{ text-align:center; }
   .title .eyebrow{ font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:var(--accent); }
   .title h1{ margin:4px 0 0; font-size:26px; letter-spacing:.02em; }
@@ -58,6 +61,7 @@
 </head>
 <body>
 <div class="wrap">
+  <a class="back" href="../index.html">&larr; Arcade</a>
   <div class="title"><div class="eyebrow">Spellbound</div><h1>Spellbound Academy</h1></div>
 
   <!-- Step 1: character -->

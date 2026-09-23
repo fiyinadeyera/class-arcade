@@ -10,6 +10,9 @@
   body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
     background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
   .wrap{ width:100%; max-width:400px; display:flex; flex-direction:column; gap:10px; }
+  .back{ align-self:flex-start; display:inline-flex; align-items:center; gap:4px; padding:8px 10px 8px 0;
+    font-size:12px; text-decoration:none; color:var(--muted); }
+  .back:hover{ color:var(--text); }
   .hud{ display:flex; justify-content:space-between; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
   .hud b{ color:var(--accent); } .hud .jail{ color:var(--jail); }
   .stage{ position:relative; border:2px solid var(--border); border-radius:10px; overflow:hidden; background:#0a0d13; }
@@ -29,6 +32,7 @@
 </head>
 <body>
 <div class="wrap">
+  <a class="back" href="../index.html">&larr; Arcade</a>
   <div class="hud"><span>Level <b id="lvl">1</b>/5</span><span id="mode">Maze</span></div>
   <div class="stage">
     <canvas id="game"></canvas>

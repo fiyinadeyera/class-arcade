@@ -10,6 +10,9 @@
   body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
     background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
   .wrap{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
+  .back{ align-self:flex-start; display:inline-flex; align-items:center; gap:4px; padding:8px 10px 8px 0;
+    font-size:12px; text-decoration:none; color:var(--muted); }
+  .back:hover{ color:var(--text); }
   .hud{ display:flex; justify-content:space-between; font-size:12px; }
   .hud b{ color:var(--accent); } .buf{ color:var(--buf); } .eag{ color:var(--eag); }
   #msg{ text-align:center; font-size:13px; min-height:18px; color:var(--accent); }
@@ -26,6 +29,7 @@
 </head>
 <body>
 <div class="wrap">
+  <a class="back" href="../index.html">&larr; Arcade</a>
   <div class="hud"><span><span class="buf">Buffalo</span> vs <span class="eag">Eagles</span></span><span>Score <b id="score">0</b></span></div>
   <div id="msg">Set your power, then press F to throw</div>
   <div class="stage">
