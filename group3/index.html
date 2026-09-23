@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spellbound Academy</title>
+<style>
+  :root{ --bg:#160f24; --panel:#241832; --panel2:#2e1f42; --text:#f3ecff; --muted:#a996c4;
+    --accent:#c9a227; --good:#5ad06a; --bad:#e2413b; --border:#3d2b57; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
+    background:radial-gradient(circle at 50% -10%, #2a1c46, var(--bg) 65%); color:var(--text);
+    font-family:"Trebuchet MS",system-ui,sans-serif; }
+  .wrap{ width:100%; max-width:460px; display:flex; flex-direction:column; gap:14px; }
+  .title{ text-align:center; }
+  .title .eyebrow{ font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:var(--accent); }
+  .title h1{ margin:4px 0 0; font-size:26px; letter-spacing:.02em; }
+  .step-label{ font-size:12px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin:0 0 4px; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .pick{ display:flex; align-items:center; gap:10px; padding:14px; min-height:44px; text-align:left;
+    border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--text);
+    font-family:inherit; font-size:15px; cursor:pointer; }
+  .pick:hover{ border-color:var(--accent); background:var(--panel2); }
+  .pick .em{ font-size:26px; line-height:1; }
+  .pick small{ display:block; color:var(--muted); font-size:11px; }
+  [hidden]{ display:none!important; }
+
+  /* battle */
+  .card{ border:1px solid var(--border); border-radius:14px; padding:14px; background:var(--panel); }
+  .fighter{ display:flex; align-items:center; gap:12px; }
+  .fighter .em{ font-size:40px; }
+  .fighter .who{ flex:1; }
+  .fighter .who b{ font-size:16px; } .fighter .who span{ font-size:11px; color:var(--muted); }
+  .bar{ height:12px; border-radius:8px; background:#3a2b52; overflow:hidden; margin-top:6px; }
+  .bar > i{ display:block; height:100%; background:var(--good); transition:width .35s; }
+  .bar.foe > i{ background:var(--bad); }
+  .arena{ text-align:center; font-size:12px; color:var(--muted); }
+  .banner{ text-align:center; padding:10px; border-radius:10px; background:#4a1414; border:1px solid #7a2020;
+    color:#ffb4a8; font-weight:700; font-size:13px; animation:pulse 1s infinite; }
+  @keyframes pulse{ 50%{ opacity:.5; } }
+  .log{ font-size:13px; line-height:1.5; min-height:66px; color:var(--text); }
+  .log div{ opacity:.55; } .log div:last-child{ opacity:1; }
+  .actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .spell{ padding:12px; min-height:46px; border:1px solid var(--border); border-radius:10px; background:var(--panel2);
+    color:var(--text); font-family:inherit; font-size:14px; cursor:pointer; }
+  .spell:hover:not(:disabled){ border-color:var(--accent); }
+  .spell:disabled{ opacity:.4; cursor:not-allowed; }
+  .spell.death{ grid-column:1 / -1; background:#3a1030; border-color:#7a2060; color:#ff9ce0; font-weight:700; }
+  .spell.death.charge{ animation:pulse .7s infinite; border-color:#ff5aa8; }
+
+  .overlay{ position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; padding:24px; text-align:center; background:rgba(12,8,22,.92); }
+  .overlay h2{ margin:0; font-size:26px; } .overlay p{ margin:0; color:var(--muted); max-width:32ch; }
+  .btn{ padding:12px 28px; min-height:44px; border:none; border-radius:10px; background:var(--accent); color:#231a00;
+    font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
+  @media(max-width:420px){ .grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title"><div class="eyebrow">Spellbound</div><h1>Spellbound Academy</h1></div>
+
+  <!-- Step 1: character -->
+  <section id="s-char">
+    <p class="step-label">1. Choose your wizard</p>
+    <div class="grid" id="charGrid"></div>
+  </section>
+
+  <!-- Step 2: enemy -->
+  <section id="s-enemy" hidden>
+    <p class="step-label">2. Choose your rival</p>
+    <div class="grid" id="enemyGrid"></div>
+  </section>
+
+  <!-- Step 3: wand -->
+  <section id="s-wand" hidden>
+    <p class="step-label">3. Choose your wand</p>
+    <div class="grid" id="wandGrid"></div>
+  </section>
+
+  <!-- Step 4: battle -->
+  <section id="s-battle" hidden style="display:flex;flex-direction:column;gap:12px;">
+    <div class="card">
+      <div class="fighter"><div class="em" id="foeEm">👹</div>
+        <div class="who"><b id="foeName">Enemy</b> <span id="foeHpTxt">100 hp</span>
+          <div class="bar foe"><i id="foeBar" style="width:100%"></i></div></div></div>
+    </div>
+    <div id="banner" class="banner" hidden></div>
+    <div class="card log" id="log"></div>
+    <div class="card">
+      <div class="fighter"><div class="em" id="youEm">🦎</div>
+        <div class="who"><b id="youName">You</b> <span id="youHpTxt">100 hp</span>
+          <div class="bar"><i id="youBar" style="width:100%"></i></div></div></div>
+    </div>
+    <div class="actions">
+      <button class="spell" data-act="flame">🔥 Flame Jet</button>
+      <button class="spell" data-act="bolt">⚡ Spark Bolt</button>
+      <button class="spell" data-act="shield">🛡️ Shield</button>
+      <button class="spell" data-act="heal">✨ Mend</button>
+      <button class="spell death" id="deathBtn" data-act="death">☠️ Death Spell (1)</button>
+    </div>
+  </section>
+</div>
+
+<div id="end" class="overlay" hidden>
+  <h2 id="endTitle">Victory</h2>
+  <p id="endText"></p>
+  <button class="btn" onclick="location.reload()">Play again</button>
+</div>
+
+<script>
+/* ===== Spellbound Academy (Group 3) — turn-based wizard duel ===== */
+const CHARS = {
+  Lizzie:{em:'🦎', hp:120, atk:1, note:'Tough scales, extra health'},
+  Willow:{em:'🌿', hp:100, atk:2, note:'Balanced and calm'},
+  Milo:{em:'🐱', hp:95, atk:5, note:'Fierce, hits harder'},
+  Salem:{em:'🐈‍⬛', hp:100, atk:3, note:'Sly, sharp spells'},
+};
+const FOES = {
+  'Grumblewart the Troll':{em:'👹', hp:115, atk:12},
+  'Sorcerer Mordak':{em:'🧙', hp:95, atk:16},
+  'The Frost Wraith':{em:'❄️', hp:85, atk:14},
+  'The Basilisk':{em:'🐍', hp:125, atk:13},
+};
+const WANDS = {
+  'Oakheart':{em:'🪄', atk:2, note:'Balanced'},
+  'Embervine':{em:'🔥', atk:6, note:'More power'},
+  'Frostoak':{em:'🛡️', atk:0, def:0.35, note:'Better defense'},
+};
+
+const el = id => document.getElementById(id);
+const rnd = n => Math.floor(Math.random()*n);
+let G = { char:null, foe:null, wand:null };
+let youHP, youMax, foeHP, foeMax, youShield, deathLeft=1, foeDeathLeft=1, foeCharging=false, turn=0, busy=false, done=false;
+
+// ---- build selection grids ----
+function tile(em, name, note, cb){
+  const b=document.createElement('button'); b.className='pick';
+  b.innerHTML=`<span class="em">${em}</span><span><b>${name}</b><small>${note}</small></span>`;
+  b.onclick=cb; return b;
+}
+Object.entries(CHARS).forEach(([n,c])=> el('charGrid').append(tile(c.em,n,c.note,()=>{ G.char=n; show('s-enemy'); })));
+Object.entries(FOES).forEach(([n,f])=> el('enemyGrid').append(tile(f.em,n,f.atk+' attack, '+f.hp+' hp',()=>{ G.foe=n; show('s-wand'); })));
+Object.entries(WANDS).forEach(([n,w])=> el('wandGrid').append(tile(w.em,n,w.note,()=>{ G.wand=n; startBattle(); })));
+
+function show(id){ ['s-char','s-enemy','s-wand','s-battle'].forEach(s=> el(s).hidden = s!==id); }
+
+// ---- battle ----
+function startBattle(){
+  const c=CHARS[G.char], f=FOES[G.foe];
+  youMax=youHP=c.hp; foeMax=foeHP=f.hp;
+  el('youEm').textContent=c.em; el('youName').textContent=G.char;
+  el('foeEm').textContent=f.em; el('foeName').textContent=G.foe;
+  log(`${c.em} ${G.char} raises the ${G.wand} wand against ${f.em} ${G.foe}!`);
+  show('s-battle'); refresh();
+}
+function refresh(){
+  el('youBar').style.width = Math.max(0,youHP/youMax*100)+'%';
+  el('foeBar').style.width = Math.max(0,foeHP/foeMax*100)+'%';
+  el('youHpTxt').textContent = Math.max(0,youHP)+' hp';
+  el('foeHpTxt').textContent = Math.max(0,foeHP)+' hp';
+}
+function log(msg){ const d=document.createElement('div'); d.textContent=msg; const L=el('log');
+  L.append(d); while(L.children.length>4) L.firstChild.remove(); }
+
+const atkBonus = () => CHARS[G.char].atk + WANDS[G.wand].atk;
+
+document.querySelectorAll('.spell').forEach(b=> b.onclick=()=> playerAct(b.dataset.act));
+
+function playerAct(act){
+  if(busy||done) return;
+  // answer to the enemy's killing curse
+  if(foeCharging){
+    if(act==='death' && deathLeft>0){ deathLeft=0; foeCharging=false; el('banner').hidden=true; el('deathBtn').textContent='☠️ Death Spell (used)'; el('deathBtn').classList.remove('charge');
+      log('☠️ Your curses collide in mid-air and cancel out! You survive.'); return enemyTurn(); }
+    else { return finish(false, `${G.foe} completes the Killing Curse. You had to answer with your own Death Spell.`); }
+  }
+  busy=true;
+  if(act==='death'){ if(deathLeft<=0){ busy=false; return; } deathLeft=0; el('deathBtn').textContent='☠️ Death Spell (used)';
+    log('☠️ You cast the forbidden Death Spell!'); return finish(true, `${G.foe} is struck down. You win.`); }
+  if(act==='flame'){ const d=14+atkBonus()+rnd(6); foeHP-=d; log(`🔥 Flame Jet hits for ${d}.`); }
+  else if(act==='bolt'){ const d=9+atkBonus()+rnd(4); foeHP-=d; log(`⚡ Spark Bolt strikes for ${d}.`); }
+  else if(act==='shield'){ youShield=true; log('🛡️ You raise a shield for the next hit.'); }
+  else if(act==='heal'){ const h=14+rnd(8); youHP=Math.min(youMax,youHP+h); log(`✨ Mend restores ${h} hp.`); }
+  refresh();
+  if(foeHP<=0) return finish(true, `${G.foe} falls. Spellbound victory!`);
+  enemyTurn();
+}
+
+function enemyTurn(){
+  busy=true;
+  setTimeout(()=>{
+    turn++;
+    // random chance to charge the one-time killing curse
+    if(foeDeathLeft>0 && Math.random() < 0.14 + turn*0.05){
+      foeDeathLeft=0; foeCharging=true;
+      el('banner').hidden=false; el('banner').textContent=`⚠️ ${G.foe} is casting the Killing Curse! Answer with your Death Spell now!`;
+      el('deathBtn').classList.add('charge');
+      log(`⚠️ ${G.foe} begins the Killing Curse...`);
+      busy=false; return;                       // player must respond
+    }
+    // normal action: mostly attack, sometimes shield
+    if(Math.random()<0.2){ log(`${G.foe} braces behind a shield.`); }
+    else{ let d=FOES[G.foe].atk+rnd(6); if(youShield){ d=Math.round(d*(WANDS[G.wand].def?WANDS[G.wand].def:0.4)); youShield=false; log('🛡️ Your shield absorbs the blow!'); }
+      youHP-=d; log(`${FOES[G.foe].em} ${G.foe} hits you for ${d}.`); }
+    refresh();
+    if(youHP<=0) return finish(false, `${G.char} is defeated by ${G.foe}.`);
+    busy=false;
+  }, 650);
+}
+
+function finish(win, text){
+  done=true; busy=false; refresh();
+  el('endTitle').textContent = win ? '✨ Victory!' : '💀 Defeated';
+  el('endTitle').style.color = win ? 'var(--good)' : 'var(--bad)';
+  el('endText').textContent = text;
+  el('end').hidden=false;
+}
+</script>
+</body>
+</html>

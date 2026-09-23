@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escape the Police</title>
+<style>
+  :root{ --bg:#0d0f1a; --panel:#161a2b; --text:#eef1ff; --muted:#8b93b6; --accent:#ffd23f; --border:#28304d; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
+    background:var(--bg); color:var(--text); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .wrap{ width:100%; max-width:440px; display:flex; flex-direction:column; gap:10px; }
+  .hud{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; }
+  .hud .label{ color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+  .hud b{ color:var(--accent); }
+  .stage{ position:relative; border:2px solid var(--border); border-radius:10px; overflow:hidden; background:#000; }
+  canvas{ display:block; width:100%; height:auto; image-rendering:pixelated; touch-action:none; }
+  .overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:20px; text-align:center; background:rgba(6,8,18,.9); }
+  .overlay.hidden{ display:none; }
+  .overlay h1{ margin:0; font-size:22px; }
+  .overlay p{ margin:0; font-size:13px; color:var(--muted); max-width:30ch; line-height:1.5; }
+  .btn{ margin-top:4px; padding:11px 26px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
+    color:#1a1200; font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
+  .pad{ display:grid; grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px); gap:6px; justify-content:center; }
+  .pad button{ border:1px solid var(--border); background:var(--panel); color:var(--text); border-radius:8px;
+    font-size:18px; font-family:inherit; cursor:pointer; }
+  .pad .up{ grid-column:2; grid-row:1; }
+  .pad .left{ grid-column:1; grid-row:2; } .pad .down{ grid-column:2; grid-row:2; } .pad .right{ grid-column:3; grid-row:2; }
+  .fire{ margin-top:6px; width:100%; padding:11px; border:none; border-radius:8px; background:#e2413b; color:#fff;
+    font-weight:700; font-family:inherit; font-size:15px; cursor:pointer; }
+  .fire.hidden{ display:none; }
+  .foot{ font-size:11px; color:var(--muted); text-align:center; }
+  @media(min-width:769px){ .pad{ display:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <span><span class="label">Obstacles</span> <b id="obs">0</b>/500</span>
+    <span><span class="label">Dist</span> <b id="dist">0</b></span>
+    <span id="state" class="label">Run</span>
+  </div>
+
+  <div class="stage">
+    <canvas id="game"></canvas>
+    <div id="overlay" class="overlay">
+      <h1>Escape the Police</h1>
+      <p>Run up the street. Dodge cars and fire. Tap UP on green for a speed boost, red sprains your ankle. Pass 500 obstacles to grab a gun and take the cops down.</p>
+      <button id="start" class="btn">Play</button>
+    </div>
+  </div>
+
+  <button id="fireBtn" class="fire hidden">FIRE (space)</button>
+  <div class="pad">
+    <button class="up" data-act="up">▲</button>
+    <button class="left" data-act="left">◀</button>
+    <button class="down" data-act="down">▼</button>
+    <button class="right" data-act="right">▶</button>
+  </div>
+  <p class="foot">WASD or arrow keys to move. Space to fire when armed.</p>
+</div>
+
+<script>
+/* ===== Escape the Police (Group 1) =========================================
+   Schematic build. Crossy-road street escape with a color reaction bar. */
+
+// ---- Knobs (easy to change live) ----
+const GUN_GOAL = 500;     // obstacles to pass before the gun appears
+const BAR_EVERY = 5000;   // color bar pops every 5s
+const BAR_WINDOW = 1800;  // ms you have to tap up
+const HOP_MS = 130;       // base time between hops
+const POLICE_SPEED = 1.1; // rows per second the cops advance
+
+// ---- Board ----
+const TILE = 16, COLS = 11, W = COLS*TILE, H = 15*TILE, PLAYER_Y = 10*TILE;
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+cv.width = W; cv.height = H; ctx.imageSmoothingEnabled = false;
+
+const CARS = ['#e2413b','#39b7c9','#b56bd6','#eaeaea','#f0862a','#5ad06a'];
+const el = id => document.getElementById(id);
+
+// ---- Deterministic per-row values ----
+const rnd = n => { const x = Math.sin(n*127.1+311.7)*43758.5; return x - Math.floor(x); };
+const rowType = R => R<3 ? 'grass' : (R%5===0 ? 'grass' : (R%7===0 ? 'fire' : 'road'));
+
+const lanes = {};
+function lane(R){
+  if(rowType(R)!=='road') return null;
+  if(!lanes[R]){
+    const dir = R%2===0 ? 1 : -1;
+    const speed = 22 + rnd(R)*26;
+    const span = (3 + Math.floor(rnd(R+3)*3))*TILE;
+    const cars = [];
+    const off = rnd(R+9)*span;
+    for(let x=-TILE; x<W+TILE; x+=span) cars.push(x+off);
+    lanes[R] = { dir, speed, span, carW:TILE*1.5, cars };
+  }
+  return lanes[R];
+}
+const burning = (c,R,t) => rowType(R)==='fire' && ((Math.floor(t/700)+c*2+R)%3===0);
+
+// ---- State ----
+let player, maxRow, obstacles, boostUntil, slowUntil, sprained, armed, policeRow;
+let running=false, over=false, barOn=false, barLocked=false, lastBar=0, barZone=null, barFlash=0, last=0;
+
+function reset(){
+  player = { col:5, row:0, colF:5, rowF:0, hop:0 };
+  maxRow=0; obstacles=0; boostUntil=0; slowUntil=0; sprained=false; armed=false; policeRow=-4;
+  for(const k in lanes) delete lanes[k];
+  running=true; over=false; barOn=false; barLocked=false; lastBar=performance.now(); barZone=null; barFlash=0;
+  el('overlay').classList.add('hidden'); el('fireBtn').classList.add('hidden');
+  last = performance.now();
+}
+
+const cooldown = now => HOP_MS*(sprained?1.8:1)*(now<boostUntil?0.5:1)*(now<slowUntil?1.7:1);
+const hazards = R => rowType(R)==='road' ? (lane(R).cars.length) : (rowType(R)==='fire'?3:1);
+
+function move(act){
+  if(!running) return;
+  const now = performance.now();
+  if(act==='up') lockBar(now);
+  if(now - player.hop < cooldown(now)) return;
+  if(act==='up'){
+    const from = player.row; player.row++;
+    if(player.row > maxRow){ obstacles += hazards(from); maxRow = player.row; if(!armed && obstacles>=GUN_GOAL){ armed=true; el('fireBtn').classList.remove('hidden'); } }
+  } else if(act==='down'){ player.row = Math.max(-2, player.row-1); }
+  else if(act==='left'){ player.col = Math.max(0, player.col-1); }
+  else if(act==='right'){ player.col = Math.min(COLS-1, player.col+1); }
+  player.hop = now;
+}
+
+function lockBar(now){
+  if(!barOn || barLocked) return;
+  barLocked = true; barOn = false;
+  const m = Math.abs(((now/600)%2)-1);              // marker 0..1 bounce
+  const z = m<0.25?'red':m<0.5?'orange':m<0.75?'yellow':'green';
+  barZone = z; barFlash = now+600;
+  if(z==='green') boostUntil = now+3000;
+  else if(z==='orange') slowUntil = now+3000;
+  else if(z==='red') sprained = true;
+}
+
+function fire(){ if(running && armed){ running=false; over=true; end('You escaped the police!', 'You grabbed the gun and took the cops down. Obstacles cleared: '+obstacles); } }
+
+function end(title, text){
+  el('overlay').classList.remove('hidden');
+  el('overlay').querySelector('h1').textContent = title;
+  el('overlay').querySelector('p').textContent = text;
+  el('start').textContent = 'Play again';
+  el('fireBtn').classList.add('hidden');
+}
+
+// ---- Update ----
+function update(dt, now){
+  if(now-lastBar >= BAR_EVERY && !barOn){ barOn=true; barLocked=false; lastBar=now; }
+  if(barOn && now-lastBar > BAR_WINDOW) barOn=false;
+
+  for(let R=player.row-6; R<=player.row+12; R++) lane(R);
+  for(const k in lanes){
+    const R=+k, L=lanes[k]; if(R<player.row-14){ delete lanes[k]; continue; }
+    const total=L.cars.length*L.span;
+    for(let i=0;i<L.cars.length;i++){ L.cars[i]+=L.dir*L.speed*dt; if(L.cars[i]>W+TILE)L.cars[i]-=total; else if(L.cars[i]<-TILE)L.cars[i]+=total; }
+  }
+
+  policeRow += POLICE_SPEED*dt;
+  const f = Math.min(1, dt*18);
+  player.colF += (player.col-player.colF)*f;
+  player.rowF += (player.row-player.rowF)*f;
+
+  const settled = Math.abs(player.rowF-player.row)<0.3 && Math.abs(player.colF-player.col)<0.3;
+  const R = player.row;
+  if(settled){
+    if(rowType(R)==='road'){
+      const L=lane(R), pcx=player.col*TILE+TILE/2;
+      for(const x of L.cars){ if(Math.abs(x+L.carW/2-pcx) < L.carW/2+TILE*0.3){ return lose('A car got you.'); } }
+    } else if(burning(player.col,R,now)){ return lose('You ran into the fire.'); }
+  }
+  if(policeRow >= player.rowF-0.05) return lose('The police caught you.');
+}
+function lose(reason){ running=false; over=true; end('Busted!', reason+' Obstacles passed: '+obstacles); }
+
+// ---- Draw ----
+const sy = R => PLAYER_Y + (player.rowF-R)*TILE;
+function draw(now){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  for(let R=Math.ceil(player.rowF+12); R>=Math.floor(player.rowF-6); R--){
+    const y=sy(R), t=rowType(R);
+    for(let c=0;c<COLS;c++){
+      if(t==='grass'){ ctx.fillStyle=(c+R)%2? '#3f7d3a':'#367033'; ctx.fillRect(c*TILE,y,TILE,TILE); }
+      else{ ctx.fillStyle= t==='fire'?'#3a2a22':'#33343f'; ctx.fillRect(c*TILE,y,TILE,TILE);
+        if(t==='road'&&c%2){ ctx.fillStyle='#5b5d6e'; ctx.fillRect(c*TILE+TILE/2-1,y+TILE/2-1,2,2); } }
+    }
+    if(t==='road'){ const L=lane(R); for(let i=0;i<L.cars.length;i++){ const cx=L.cars[i]; ctx.fillStyle=CARS[Math.floor(rnd(R+i*3)*CARS.length)];
+      ctx.fillRect(cx,y+3,L.carW,TILE-6); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(cx+(L.dir>0?L.carW-6:2),y+5,4,TILE-10); } }
+    if(t==='fire'){ for(let c=0;c<COLS;c++) if(burning(c,R,now)){ ctx.fillStyle='#f0862a'; ctx.fillRect(c*TILE+2,y+3,TILE-4,TILE-4);
+      ctx.fillStyle= (Math.floor(now/120)+c)%2?'#ffd23f':'#ff5a2a'; ctx.fillRect(c*TILE+4,y+2,TILE-8,TILE-8); } }
+  }
+
+  // police line
+  const py=sy(policeRow);
+  if(py>-TILE && py<H+TILE){ ctx.fillStyle='#16297a'; ctx.fillRect(0,py,W,TILE);
+    for(let c=1;c<COLS;c+=3){ ctx.fillStyle='#2b4cff'; ctx.fillRect(c*TILE+2,py+3,TILE-4,TILE-5); ctx.fillStyle='#101a3a'; ctx.fillRect(c*TILE+3,py+1,TILE-6,4);
+      ctx.fillStyle=(Math.floor(now/200)%2)?'#ff3b3b':'#3b7bff'; ctx.fillRect(c*TILE+5,py+5,TILE-10,3); } }
+
+  // player
+  const px=player.colF*TILE, ppy=PLAYER_Y;
+  ctx.fillStyle= sprained?'#c94a4a':'#2b3a67'; ctx.fillRect(px+4,ppy+9,3,5); ctx.fillRect(px+9,ppy+9,3,5);
+  ctx.fillStyle='#ffd23f'; ctx.fillRect(px+3,ppy+4,10,7);
+  ctx.fillStyle='#f0c090'; ctx.fillRect(px+5,ppy,6,5);
+  if(armed){ ctx.fillStyle='#333'; ctx.fillRect(px+11,ppy+5,6,3); }
+
+  drawBar(now);
+}
+
+function drawBar(now){
+  const cols=['#e2413b','#f0862a','#ffd23f','#5ad06a']; const seg=W/4;
+  const active = barOn || now<barFlash;
+  ctx.globalAlpha = active?1:0.3;
+  for(let i=0;i<4;i++){ ctx.fillStyle=cols[i]; ctx.fillRect(i*seg,0,seg,7); }
+  ctx.globalAlpha = 1;
+  if(barOn){ const m=Math.abs(((now/600)%2)-1); ctx.fillStyle='#fff'; ctx.fillRect(m*W-1,0,2,9);
+    ctx.fillRect(m*W-3,9,6,2); }
+  if(now<barFlash && barZone){ const idx={red:0,orange:1,yellow:2,green:3}[barZone]; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(idx*seg+1,1,seg-2,6); }
+}
+
+// ---- HUD + loop ----
+function hud(now){
+  el('obs').textContent = obstacles; el('dist').textContent = maxRow;
+  let s = now<boostUntil?'Boost!' : now<slowUntil?'Slow' : sprained?'Hurt' : 'Run';
+  if(armed) s = 'ARMED';
+  el('state').textContent = s;
+}
+function loop(ts){
+  const dt = Math.min(0.05,(ts-last)/1000); last=ts;
+  if(running) update(dt, ts);
+  draw(ts); hud(ts);
+  requestAnimationFrame(loop);
+}
+
+// ---- Input ----
+const KEYS={ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down',ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right'};
+addEventListener('keydown', e=>{ if(e.key===' '){ e.preventDefault(); fire(); return; } const a=KEYS[e.key]; if(a){ e.preventDefault(); move(a); } });
+document.querySelectorAll('.pad button').forEach(b=>{ const a=b.dataset.act; const go=e=>{ e.preventDefault(); move(a); }; b.addEventListener('touchstart',go,{passive:false}); b.addEventListener('mousedown',go); });
+el('fireBtn').addEventListener('click', fire);
+el('start').addEventListener('click', reset);
+
+// idle frame so the start screen has a backdrop
+player = { col:5, row:0, colF:5, rowF:0, hop:0 }; policeRow=-6;
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

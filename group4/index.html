@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gridiron Showdown</title>
+<style>
+  :root{ --bg:#0a1410; --panel:#12241b; --text:#eafff2; --muted:#8fb7a2; --buf:#2b6cff; --eag:#3ad06a; --accent:#ffd23f; --border:#1f3a2c; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
+    background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .wrap{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
+  .hud{ display:flex; justify-content:space-between; font-size:12px; }
+  .hud b{ color:var(--accent); } .buf{ color:var(--buf); } .eag{ color:var(--eag); }
+  #msg{ text-align:center; font-size:13px; min-height:18px; color:var(--accent); }
+  .stage{ position:relative; border:2px solid var(--border); border-radius:10px; overflow:hidden; background:#0c1a13; }
+  canvas{ display:block; width:100%; height:auto; image-rendering:pixelated; touch-action:none; }
+  .overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:20px; text-align:center; background:rgba(6,14,10,.92); }
+  .overlay.hidden{ display:none; }
+  .overlay h1{ margin:0; font-size:20px; } .overlay p{ margin:0; font-size:13px; color:var(--muted); max-width:30ch; line-height:1.5; }
+  .btn{ margin-top:4px; padding:11px 24px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
+    color:#231a00; font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
+  .foot{ font-size:11px; color:var(--muted); text-align:center; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud"><span><span class="buf">Buffalo</span> vs <span class="eag">Eagles</span></span><span>Score <b id="score">0</b></span></div>
+  <div id="msg">Set your power, then press F to throw</div>
+  <div class="stage">
+    <canvas id="game"></canvas>
+    <div id="overlay" class="overlay">
+      <h1>Gridiron Showdown</h1>
+      <p>You are the Buffalo QB. R/Q set power (max 80), F throws. Then you are the receiver: catch with F, run with WASD to the end zone, stiff-arm with T. Touchdown = 6, then K for the extra point.</p>
+      <button id="start" class="btn">Hike</button>
+    </div>
+  </div>
+  <p class="foot">R/Q power · F throw &amp; catch · WASD run · T stiff-arm · K kick</p>
+</div>
+
+<script>
+/* ===== Gridiron Showdown (Group 4) — schematic football ===== */
+const W=300, H=520, EZ=56;            // field + end zone height (top)
+const cv=document.getElementById('game'), ctx=cv.getContext('2d');
+cv.width=W; cv.height=H; ctx.imageSmoothingEnabled=false;
+const el=id=>document.getElementById(id);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+let state='menu', power=80, score=0, stiff=2, last=0, wantCatch=false;
+let qb, wr, ball, defs, line;
+
+function newPlay(keepScore){
+  if(!keepScore) score=0;
+  state='throw'; power=80; stiff=2; wantCatch=false;
+  qb={x:W/2, y:H-46};
+  wr={x:W/2, y:H-92};
+  ball={x:qb.x, y:qb.y, t:0, live:false, from:null, to:null};
+  defs=[{x:70,y:H-230},{x:150,y:H-270},{x:230,y:H-230},{x:150,y:H-160}];
+  line=[]; for(let i=0;i<8;i++) line.push({x:30+i*34, y:H-24});   // Buffalo line (decor)
+  el('overlay').classList.add('hidden');
+  el('score').textContent=score;
+  msg('Set power with R/Q, press F to throw');
+}
+const msg = t => el('msg').textContent=t;
+const over = (title,text,btn)=>{ const o=el('overlay'); o.classList.remove('hidden');
+  o.querySelector('h1').textContent=title; o.querySelector('p').textContent=text; el('start').textContent=btn; };
+
+const lead = () => (power-65)/15*100 + 80;    // higher power throws deeper
+
+function throwBall(){
+  ball.from={x:qb.x,y:qb.y};
+  ball.to={x:wr.x, y:Math.max(EZ+20, wr.y-lead())};
+  ball.t=0; ball.live=true; state='ball'; wantCatch=false;
+  msg('Here comes the ball. Tap F to catch!');
+}
+
+function key(k){
+  if(state==='throw'){
+    if(k==='r') power=Math.min(80,power+3);
+    else if(k==='q') power=Math.max(65,power-3);
+    else if(k==='f') throwBall();
+  } else if(state==='ball'){
+    if(k==='f') wantCatch=true;
+  } else if(state==='run'){
+    if(k==='t' && stiff>0){ let n=defs.slice().sort((a,b)=>dist(a,wr)-dist(b,wr))[0];
+      if(n && dist(n,wr)<70){ const dx=n.x-wr.x, dy=n.y-wr.y, m=Math.hypot(dx,dy)||1; n.x+=dx/m*46; n.y+=dy/m*46; stiff--; msg('Stiff-arm! ('+stiff+' left)'); } }
+  } else if(state==='extra'){
+    if(k==='k'){ if(Math.random()<0.8){ score++; msg('The kick is GOOD! +1'); } else msg('The kick sails wide.');
+      el('score').textContent=score; state='done'; setTimeout(()=>over('Great drive!','Final score: '+score+'. Line up for another play.','Next play'),700); }
+  }
+}
+const MOVE={w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],arrowup:[0,-1],arrowdown:[0,1],arrowleft:[-1,0],arrowright:[1,0]};
+addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k===' '){e.preventDefault();} if(k in MOVE||['r','q','f','t','k'].includes(k)){ e.preventDefault(); key(k); } });
+// touch: tap zones -> map to keys
+document.querySelectorAll('[data-k]').forEach(b=> b.onclick=()=>key(b.dataset.k));
+
+function update(dt){
+  if(state==='throw'){ wr.y-=1.4; wr.x+=Math.sin(performance.now()/300)*0.6; }
+  else if(state==='ball'){
+    ball.t=Math.min(1, ball.t+dt*1.15);
+    wr.x+=(ball.to.x-wr.x)*0.08; wr.y+=(ball.to.y-wr.y)*0.08;
+    if(ball.t>=1){
+      if(wantCatch && dist(wr,ball.to)<34){ state='run'; msg('CAUGHT! Run to the end zone (WASD).'); }
+      else { state='done'; setTimeout(()=>over('Incomplete','No catch that time. Reset and try again.','Next play'),500); }
+    }
+  }
+  else if(state==='run'){
+    keysHeld.forEach(k=>{ const m=MOVE[k]; if(m){ wr.x+=m[0]*2.4; wr.y+=m[1]*2.4; } });
+    wr.x=Math.max(8,Math.min(W-8,wr.x)); wr.y=Math.max(EZ-6,Math.min(H-8,wr.y));
+    for(const d of defs){ const dx=wr.x-d.x, dy=wr.y-d.y, m=Math.hypot(dx,dy)||1; d.x+=dx/m*2.0; d.y+=dy/m*2.0;
+      if(dist(d,wr)<13){ state='done'; return setTimeout(()=>over('Tackled!','The Eagles brought you down. Next play.','Next play'),500); } }
+    if(wr.y<=EZ){ score+=6; el('score').textContent=score; state='extra'; msg('TOUCHDOWN! +6. Press K for the extra point.'); }
+  }
+}
+
+// held keys for smooth running
+const keysHeld=new Set();
+addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k in MOVE) keysHeld.add(k); });
+addEventListener('keyup',e=>{ keysHeld.delete(e.key.toLowerCase()); });
+
+function draw(){
+  // field
+  ctx.fillStyle='#123b25'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#0e2f1d'; ctx.fillRect(0,0,W,EZ);            // end zone
+  ctx.strokeStyle='#1f5c3a'; ctx.lineWidth=1;
+  for(let y=EZ;y<H;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.fillStyle='#3ad06a'; ctx.font='10px monospace'; ctx.textAlign='center'; ctx.fillText('END ZONE',W/2,EZ/2+3);
+
+  for(const p of line){ ctx.fillStyle='#1c4b8a'; ctx.fillRect(p.x-4,p.y-4,8,8); }   // decor line
+  for(const d of defs){ ctx.fillStyle='#3ad06a'; ctx.beginPath(); ctx.arc(d.x,d.y,7,0,7); ctx.fill(); }
+
+  if(state==='throw'||state==='menu'){ ctx.fillStyle='#2b6cff'; ctx.beginPath(); ctx.arc(qb.x,qb.y,8,0,7); ctx.fill(); }
+  // receiver
+  ctx.fillStyle='#5aa0ff'; ctx.beginPath(); ctx.arc(wr.x,wr.y,8,0,7); ctx.fill();
+  if(state==='run'){ ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.ellipse(wr.x,wr.y-11,4,6,0,0,7); ctx.fill(); }
+
+  if(state==='ball'&&ball.live){ const t=ball.t, x=ball.from.x+(ball.to.x-ball.from.x)*t,
+      y=ball.from.y+(ball.to.y-ball.from.y)*t - Math.sin(t*Math.PI)*40;
+    ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.ellipse(x,y,4,7,0,0,7); ctx.fill(); }
+
+  // power meter during throw
+  if(state==='throw'){ const bx=20,by=H-20,bw=W-40;
+    ctx.fillStyle='#08150e'; ctx.fillRect(bx,by,bw,10);
+    ctx.fillStyle='#ffd23f'; ctx.fillRect(bx,by,bw*(power-60)/25,10);
+    ctx.fillStyle='#eafff2'; ctx.textAlign='left'; ctx.fillText('POWER '+power,bx,by-4); }
+}
+
+function loop(ts){ const dt=Math.min(0.05,(ts-last)/1000); last=ts; if(state!=='menu') update(dt); draw(); requestAnimationFrame(loop); }
+el('start').addEventListener('click',()=>{ const cont = el('start').textContent==='Next play'; newPlay(cont); });
+
+// idle backdrop
+qb={x:W/2,y:H-46}; wr={x:W/2,y:H-92}; ball={x:0,y:0,live:false}; defs=[{x:70,y:H-230},{x:150,y:H-270},{x:230,y:H-230},{x:150,y:H-160}]; line=[];
+for(let i=0;i<8;i++) line.push({x:30+i*34,y:H-24});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

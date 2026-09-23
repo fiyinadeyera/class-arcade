@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Class Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#0a0a16; --surface:#15152a; --surface2:#1d1d38; --line:#2b2b4d;
+    --text:#f2f1ff; --muted:#9a98c4; --marquee:#ffcf3f;
+    --c1:#f0862a; --c2:#5ad06a; --c3:#c07bff; --c4:#4d8cff;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; padding:24px 16px 48px;
+    background:
+      radial-gradient(circle at 50% -8%, #201a3d 0%, transparent 55%),
+      var(--bg);
+    color:var(--text); font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; }
+  .shell{ max-width:760px; margin:0 auto; }
+
+  /* marquee */
+  .marquee{ text-align:center; padding:12px 0 28px; }
+  .kicker{ margin:0; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--marquee); }
+  h1{ font-family:"Press Start 2P",monospace; font-weight:400; line-height:1.25;
+    font-size:clamp(20px,7vw,40px); margin:14px 0 0; text-wrap:balance;
+    text-shadow:0 0 14px rgba(255,207,63,.35); }
+  .sub{ margin:14px auto 0; max-width:44ch; font-size:14px; line-height:1.6; color:var(--muted); }
+
+  /* rack of cabinets */
+  .rack{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:8px; }
+  .cab{ position:relative; display:flex; flex-direction:column; gap:10px;
+    padding:20px; border:1px solid var(--line); border-top:3px solid var(--ac);
+    border-radius:14px; background:linear-gradient(180deg,var(--surface2),var(--surface)); }
+  .cab .top{ display:flex; align-items:center; gap:14px; }
+  .cab .icon{ font-size:34px; line-height:1; filter:drop-shadow(0 0 10px var(--ac)); }
+  .cab .id{ flex:1; }
+  .cab .group{ font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ac); }
+  .cab h2{ margin:3px 0 0; font-size:18px; }
+  .cab .blurb{ margin:0; font-size:13px; line-height:1.55; color:var(--muted); }
+  .cab .controls{ margin:0; font-size:11px; color:var(--text); opacity:.7; }
+  .cab .play{ margin-top:4px; display:flex; align-items:center; justify-content:center; gap:8px;
+    min-height:46px; border-radius:10px; text-decoration:none; font-weight:600; font-size:15px;
+    color:#0a0a16; background:var(--ac); }
+  .cab .play:active{ transform:translateY(1px); }
+  .cab:focus-within, .cab:hover{ box-shadow:0 0 0 1px var(--ac), 0 10px 30px -12px var(--ac); }
+
+  footer{ margin-top:32px; padding:18px 20px; border:1px dashed var(--line); border-radius:12px;
+    font-size:12.5px; line-height:1.7; color:var(--muted); }
+  footer b{ color:var(--text); font-weight:600; }
+  footer .steps{ margin:8px 0 0; padding-left:18px; }
+
+  @media(min-width:640px){ .rack{ grid-template-columns:1fr 1fr; } }
+  @media(prefers-reduced-motion:no-preference){
+    .kicker{ animation:blink 2.4s steps(1) infinite; }
+    @keyframes blink{ 92%{opacity:1;} 96%{opacity:.35;} }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="marquee">
+    <p class="kicker">Insert idea · Press play</p>
+    <h1>CLASS ARCADE</h1>
+    <p class="sub">Four games you designed and the AI built. Pick a cabinet and play. Tap any game to open it on your phone.</p>
+  </header>
+
+  <main class="rack">
+
+    <article class="cab" style="--ac:var(--c1)">
+      <div class="top">
+        <span class="icon">🚓</span>
+        <div class="id"><div class="group">Group 1</div><h2>Escape the Police</h2></div>
+      </div>
+      <p class="blurb">Cross the street, dodge cars and fire, and outrun the cops. Time the color bar for a speed boost, then grab a gun at 500 obstacles.</p>
+      <p class="controls">WASD / arrows · UP on green = boost</p>
+      <a class="play" href="group1/index.html">▶ Play</a>
+    </article>
+
+    <article class="cab" style="--ac:var(--c2)">
+      <div class="top">
+        <span class="icon">🧭</span>
+        <div class="id"><div class="group">Group 2</div><h2>Leave the Maze</h2></div>
+      </div>
+      <p class="blurb">Find the exit across 5 mazes before the police tag you. Get caught and you land in a jail maze with 3 officers. The last level has a guard at the door.</p>
+      <p class="controls">WASD / arrows to move</p>
+      <a class="play" href="group2/index.html">▶ Play</a>
+    </article>
+
+    <article class="cab" style="--ac:var(--c3)">
+      <div class="top">
+        <span class="icon">🪄</span>
+        <div class="id"><div class="group">Group 3</div><h2>Spellbound Academy</h2></div>
+      </div>
+      <p class="blurb">Pick your wizard, rival, and wand, then duel. Cast Flame, Bolt, Shield, and Mend. Answer the enemy Death Spell with your one and only, or fall.</p>
+      <p class="controls">Tap the spell buttons</p>
+      <a class="play" href="group3/index.html">▶ Play</a>
+    </article>
+
+    <article class="cab" style="--ac:var(--c4)">
+      <div class="top">
+        <span class="icon">🏈</span>
+        <div class="id"><div class="group">Group 4</div><h2>Gridiron Showdown</h2></div>
+      </div>
+      <p class="blurb">Buffalo vs Eagles. Set your throw power, catch the ball, then run to the end zone past the defenders. Touchdown is 6, then kick the extra point.</p>
+      <p class="controls">R/Q power · F throw &amp; catch · WASD run · T · K</p>
+      <a class="play" href="group4/index.html">▶ Play</a>
+    </article>
+
+  </main>
+
+  <footer>
+    <b>Today:</b> test your group's game, tell the AI what to change, then play the new version on your phone.
+    <ol class="steps">
+      <li>Play your cabinet and find one thing to improve.</li>
+      <li>Say the change out loud, the AI edits the code.</li>
+      <li>Refresh on your phone and play it again.</li>
+    </ol>
+  </footer>
+
+</div>
+</body>
+</html>

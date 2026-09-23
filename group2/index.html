@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leave the Maze</title>
+<style>
+  :root{ --bg:#0c1017; --panel:#151b26; --text:#eaf0ff; --muted:#8391a8; --accent:#5ad06a; --jail:#e2b23b; --border:#26303f; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:14px;
+    background:var(--bg); color:var(--text); font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .wrap{ width:100%; max-width:400px; display:flex; flex-direction:column; gap:10px; }
+  .hud{ display:flex; justify-content:space-between; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+  .hud b{ color:var(--accent); } .hud .jail{ color:var(--jail); }
+  .stage{ position:relative; border:2px solid var(--border); border-radius:10px; overflow:hidden; background:#0a0d13; }
+  canvas{ display:block; width:100%; height:auto; image-rendering:pixelated; touch-action:none; }
+  .overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:20px; text-align:center; background:rgba(6,9,15,.92); }
+  .overlay.hidden{ display:none; }
+  .overlay h1{ margin:0; font-size:20px; } .overlay p{ margin:0; font-size:13px; color:var(--muted); max-width:30ch; line-height:1.5; }
+  .btn{ margin-top:4px; padding:11px 26px; min-height:44px; border:none; border-radius:8px; background:var(--accent);
+    color:#08210c; font-weight:700; font-size:15px; font-family:inherit; cursor:pointer; }
+  .pad{ display:grid; grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px); gap:6px; justify-content:center; }
+  .pad button{ border:1px solid var(--border); background:var(--panel); color:var(--text); border-radius:8px; font-size:18px; font-family:inherit; cursor:pointer; }
+  .pad .u{ grid-column:2; } .pad .l{ grid-column:1; grid-row:2; } .pad .d{ grid-column:2; grid-row:2; } .pad .r{ grid-column:3; grid-row:2; }
+  .foot{ font-size:11px; color:var(--muted); text-align:center; }
+  @media(min-width:769px){ .pad{ display:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud"><span>Level <b id="lvl">1</b>/5</span><span id="mode">Maze</span></div>
+  <div class="stage">
+    <canvas id="game"></canvas>
+    <div id="overlay" class="overlay">
+      <h1>Leave the Maze</h1>
+      <p>Find the exit before the police tag you. Get caught and you are thrown in a jail maze, twice as hard with 3 officers. 5 levels. The last one has 5 cops and a guard at the door.</p>
+      <button id="start" class="btn">Play</button>
+    </div>
+  </div>
+  <div class="pad">
+    <button class="u" data-act="up">▲</button><button class="l" data-act="left">◀</button>
+    <button class="d" data-act="down">▼</button><button class="r" data-act="right">▶</button>
+  </div>
+  <p class="foot">WASD or arrow keys to move.</p>
+</div>
+
+<script>
+/* ===== Leave the Maze (Group 2) — schematic build ===== */
+const TILE = 20;
+const DIMS = [0,7,8,9,10,11];              // maze size per level
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+const el = id => document.getElementById(id);
+
+let lvl=1, mode='maze', returnLevel=1, m, player, exitC, cops, copSpeed, copTimer=0, running=false, last=0;
+
+// ---- maze generation (DFS) ----
+function genMaze(cols,rows){
+  const cells=[...Array(cols*rows)].map(()=>({n:1,e:1,s:1,w:1,v:0}));
+  const idx=(x,y)=>y*cols+x, stack=[[0,0]]; cells[0].v=1;
+  while(stack.length){
+    const [x,y]=stack[stack.length-1], nb=[];
+    if(y>0&&!cells[idx(x,y-1)].v)nb.push(['n',x,y-1]);
+    if(x<cols-1&&!cells[idx(x+1,y)].v)nb.push(['e',x+1,y]);
+    if(y<rows-1&&!cells[idx(x,y+1)].v)nb.push(['s',x,y+1]);
+    if(x>0&&!cells[idx(x-1,y)].v)nb.push(['w',x-1,y]);
+    if(!nb.length){ stack.pop(); continue; }
+    const [dir,nx,ny]=nb[Math.floor(Math.random()*nb.length)];
+    const c=cells[idx(x,y)], d=cells[idx(nx,ny)];
+    if(dir==='n'){c.n=0;d.s=0;} if(dir==='e'){c.e=0;d.w=0;} if(dir==='s'){c.s=0;d.n=0;} if(dir==='w'){c.w=0;d.e=0;}
+    d.v=1; stack.push([nx,ny]);
+  }
+  return { cols, rows, cells, idx };
+}
+
+// first step of shortest path from (sx,sy) toward (tx,ty)
+function step(sx,sy,tx,ty){
+  const {cols,rows,cells,idx}=m, prev=new Array(cols*rows).fill(-1), q=[[sx,sy]];
+  prev[idx(sx,sy)]=idx(sx,sy);
+  while(q.length){
+    const [x,y]=q.shift(); if(x===tx&&y===ty)break;
+    const c=cells[idx(x,y)], opts=[];
+    if(!c.n)opts.push([x,y-1]); if(!c.e)opts.push([x+1,y]); if(!c.s)opts.push([x,y+1]); if(!c.w)opts.push([x-1,y]);
+    for(const [nx,ny] of opts) if(prev[idx(nx,ny)]===-1){ prev[idx(nx,ny)]=idx(x,y); q.push([nx,ny]); }
+  }
+  let cur=idx(tx,ty); if(prev[cur]===-1) return [sx,sy];
+  const start=idx(sx,sy);
+  while(prev[cur]!==start && prev[cur]!==cur) cur=prev[cur];
+  return [cur%cols, Math.floor(cur/cols)];
+}
+
+function farCell(){
+  for(let i=0;i<200;i++){
+    const x=Math.floor(Math.random()*m.cols), y=Math.floor(Math.random()*m.rows);
+    if((x+y) < (m.cols)) continue;                       // keep away from the start corner
+    if(x===exitC.x && y===exitC.y) continue;
+    return {x,y};
+  }
+  return {x:m.cols-1, y:0};
+}
+
+function build(cols, jail){
+  m = genMaze(cols,cols); player={x:0,y:0}; exitC={x:cols-1,y:cols-1};
+  cv.width=cols*TILE; cv.height=cols*TILE; ctx.imageSmoothingEnabled=false;
+  cops=[]; copTimer=0;
+  if(jail){ copSpeed=300; for(let i=0;i<3;i++) cops.push(farCell()); }
+  else if(lvl===5){ copSpeed=240; cops.push({x:exitC.x, y:exitC.y-1, guard:true}); for(let i=0;i<4;i++) cops.push(farCell()); }
+  else { copSpeed=380-lvl*30; cops.push(farCell()); }
+}
+
+function loadLevel(n){ lvl=n; mode='maze'; el('mode').textContent='Maze'; el('mode').className=''; build(DIMS[n], false); }
+function loadJail(){ returnLevel=lvl; mode='jail'; el('mode').textContent='JAIL'; el('mode').className='jail'; build(DIMS[lvl]+4, true); }
+
+function overlay(title,text,btn){ el('overlay').classList.remove('hidden'); el('overlay').querySelector('h1').textContent=title;
+  el('overlay').querySelector('p').textContent=text; el('start').textContent=btn; running=false; }
+
+function caught(){
+  if(mode==='jail'){ lvl=1; overlay('Sent back to the start','You did not escape the jail. The whole game restarts.','Play from Level 1'); }
+  else if(lvl===5){ overlay('Tagged!','A cop got you at the final level. Restarting Level 5.','Retry Level 5'); pendingLevel=5; }
+  else { loadJail(); }
+}
+let pendingLevel=0;
+
+function reachedExit(){
+  if(mode==='jail'){ loadLevel(returnLevel); }
+  else if(lvl===5){ overlay('You are free!','You escaped all 5 mazes and the jail. Nice work.','Play again'); pendingLevel=1; }
+  else { loadLevel(lvl+1); }
+}
+
+// ---- input ----
+function tryMove(dir){
+  if(!running) return;
+  const c=m.cells[m.idx(player.x,player.y)];
+  if(dir==='up'&&!c.n)player.y--; else if(dir==='down'&&!c.s)player.y++;
+  else if(dir==='left'&&!c.w)player.x--; else if(dir==='right'&&!c.e)player.x++;
+  if(cops.some(o=>o.x===player.x&&o.y===player.y)) return caught();
+  if(player.x===exitC.x&&player.y===exitC.y) reachedExit();
+}
+const KEYS={ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down',ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right'};
+addEventListener('keydown',e=>{ const a=KEYS[e.key]; if(a){ e.preventDefault(); tryMove(a); } });
+document.querySelectorAll('.pad button').forEach(b=>{ const go=e=>{ e.preventDefault(); tryMove(b.dataset.act); };
+  b.addEventListener('touchstart',go,{passive:false}); b.addEventListener('mousedown',go); });
+
+// ---- loop ----
+function stepCops(){
+  for(const o of cops){ const [nx,ny]=step(o.x,o.y,player.x,player.y); o.x=nx; o.y=ny;
+    if(o.x===player.x&&o.y===player.y){ caught(); return; } }
+}
+function draw(){
+  const {cols,rows,cells}=m;
+  ctx.fillStyle='#0a0d13'; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.fillStyle= mode==='jail' ? '#e2b23b' : '#5ad06a';
+  ctx.fillRect(exitC.x*TILE+3, exitC.y*TILE+3, TILE-6, TILE-6);
+  ctx.strokeStyle= mode==='jail' ? '#4a3f24' : '#33415a'; ctx.lineWidth=2;
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){ const c=cells[y*cols+x], X=x*TILE, Y=y*TILE;
+    ctx.beginPath();
+    if(c.n){ ctx.moveTo(X,Y); ctx.lineTo(X+TILE,Y); }
+    if(c.w){ ctx.moveTo(X,Y); ctx.lineTo(X,Y+TILE); }
+    if(x===cols-1&&c.e){ ctx.moveTo(X+TILE,Y); ctx.lineTo(X+TILE,Y+TILE); }
+    if(y===rows-1&&c.s){ ctx.moveTo(X,Y+TILE); ctx.lineTo(X+TILE,Y+TILE); }
+    ctx.stroke();
+  }
+  for(const o of cops){ ctx.fillStyle= o.guard?'#ff5a5a':'#3b7bff'; ctx.fillRect(o.x*TILE+4,o.y*TILE+4,TILE-8,TILE-8);
+    ctx.fillStyle='#0a0d13'; ctx.fillRect(o.x*TILE+6,o.y*TILE+5,TILE-12,3); }
+  ctx.fillStyle='#ffd23f'; ctx.fillRect(player.x*TILE+4,player.y*TILE+4,TILE-8,TILE-8);
+}
+function loop(ts){
+  const dt=(ts-last); last=ts;
+  if(running){ copTimer+=dt; if(copTimer>=copSpeed){ copTimer=0; stepCops(); } draw(); }
+  requestAnimationFrame(loop);
+}
+
+el('start').addEventListener('click',()=>{
+  el('overlay').classList.add('hidden');
+  loadLevel(pendingLevel||1); pendingLevel=0; running=true; last=performance.now();
+});
+
+// idle backdrop for the menu
+lvl=1; build(DIMS[1],false); draw();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
